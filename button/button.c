@@ -58,6 +58,7 @@ struct btn_cb{
 };
 
 struct button_dev{
+    bool ignore_first_push; //Fix for ghost toggle at startup
     uint8_t io_num;
     uint8_t active_level;
     uint32_t serial_thres_sec;
@@ -102,6 +103,15 @@ static void button_tap_psh_cb(TimerHandle_t tmr)
     int lv = gpio_get_level(btn->io_num);
 
     if (btn->active_level == lv) {
+        
+        //Fix for ghost toggle at startup
+        if (btn->ignore_first_push) {
+            btn->ignore_first_push = false;
+            btn->state = BUTTON_STATE_PUSH;
+            xTimerStop(btn->tap_rls_cb.tmr, portMAX_DELAY);
+            return;
+        }
+        
         // True implies key is pressed
         btn->state = BUTTON_STATE_PUSH;
         if (btn->press_serial_cb.tmr) {
@@ -265,7 +275,7 @@ button_handle_t iot_button_create(gpio_num_t gpio_num, button_active_t active_le
     gpio_conf.mode = GPIO_MODE_INPUT;
     gpio_conf.pin_bit_mask = (1 << gpio_num);
     
-    //change for shelly input
+    //change for APRIMS Relayt input
     if (active_level) {
         gpio_conf.pull_up_en = GPIO_PULLUP_DISABLE;
         gpio_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
@@ -276,6 +286,18 @@ button_handle_t iot_button_create(gpio_num_t gpio_num, button_active_t active_le
     
     gpio_config(&gpio_conf);
     gpio_isr_handler_add(gpio_num, button_gpio_isr_handler, btn);
+    
+    //Fix for ghost toggle at startup
+    gpio_intr_disable(gpio_num);
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+    gpio_intr_enable(gpio_num);
+
+    int initial_level = gpio_get_level(gpio_num);
+    btn->ignore_first_push = (initial_level == active_level);
+    if (initial_level == active_level) {
+        btn->state = BUTTON_STATE_PUSH;
+    }
+    
     return (button_handle_t) btn;
 }
 
