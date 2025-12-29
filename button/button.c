@@ -72,6 +72,8 @@ struct button_dev{
     button_cb_t* cb_head;
 };
 
+static uint8_t is_isr_installed = 0;
+
 #define BUTTON_GLITCH_FILTER_TIME_MS   CONFIG_IO_GLITCH_FILTER_TIME_MS
 static const char* TAG = "button";
 
@@ -250,13 +252,28 @@ button_handle_t iot_button_create(gpio_num_t gpio_num, button_active_t active_le
     btn->tap_psh_cb.pbtn = btn;
     btn->tap_psh_cb.tmr = xTimerCreate("btn_psh_tmr", btn->tap_psh_cb.interval, pdFALSE,
             &btn->tap_psh_cb, button_tap_psh_cb);
-    gpio_install_isr_service(0);
+    
+    //Solving the error
+    if (!is_isr_installed) {
+        gpio_install_isr_service(0);
+        is_isr_installed = 1;
+    }
+    
+    //gpio_install_isr_service(0);
     gpio_config_t gpio_conf;
     gpio_conf.intr_type = GPIO_INTR_ANYEDGE;
     gpio_conf.mode = GPIO_MODE_INPUT;
     gpio_conf.pin_bit_mask = (1 << gpio_num);
-    gpio_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    gpio_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    
+    //change for shelly input
+    if (active_level) {
+        gpio_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+        gpio_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
+    } else {
+        gpio_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+        gpio_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    }
+    
     gpio_config(&gpio_conf);
     gpio_isr_handler_add(gpio_num, button_gpio_isr_handler, btn);
     return (button_handle_t) btn;
